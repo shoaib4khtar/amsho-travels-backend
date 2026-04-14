@@ -57,7 +57,7 @@ if (process.env.NODE_ENV === 'development') {
 app.get('/', (req, res) => {
   res.status(200).json({
     success: true,
-    message: '🚀 Amsho Travels API is running',
+    message: '🚀 Bajrang Express API is running',
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
@@ -93,7 +93,7 @@ async function startServer() {
   app.listen(PORT, () => {
     console.log('');
     console.log('══════════════════════════════════════════════');
-    console.log(`🚀  Amsho Travels API Server`);
+    console.log(`🚀  Bajrang Express API Server`);
     console.log(`    Port:        ${PORT}`);
     console.log(`    Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`    API URL:     http://localhost:${PORT}`);

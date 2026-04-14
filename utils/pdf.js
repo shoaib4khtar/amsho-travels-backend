@@ -22,7 +22,7 @@ function generatePDF(ticket) {
 
   const pdfData = {
     ticketId: ticket.ticketId,
-    header: 'Amsho Travels',
+    header: 'Bajrang Express',
     subheader: 'Reliable · Comfortable · Safe',
     fields: {
       Name: ticket.name,

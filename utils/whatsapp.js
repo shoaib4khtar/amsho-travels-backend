@@ -19,7 +19,7 @@ function sendWhatsAppMessage(ticket) {
   });
 
   const message = `
-🎫 *Amsho Travels — Booking Confirmed*
+🎫 *Bajrang Express — Booking Confirmed*
 
 👤 *Name:* ${ticket.name}
 📞 *Phone:* ${ticket.phone}
@@ -28,7 +28,7 @@ function sendWhatsAppMessage(ticket) {
 💰 *Amount:* ₹${Number(ticket.price).toLocaleString('en-IN')}
 🆔 *Ticket:* ${ticket.ticketId}
 
-Thank you for choosing Amsho Travels!
+Thank you for choosing Bajrang Express!
 Have a safe journey 🙏
   `.trim();
 
