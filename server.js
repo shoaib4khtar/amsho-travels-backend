@@ -109,6 +109,7 @@ async function startServer() {
     console.log('   GET    /api/tickets             → List tickets (admin)');
     console.log('   GET    /api/tickets/today       → Today stats (admin)');
     console.log('   GET    /api/tickets/export      → Export CSV (admin)');
+    console.log('   GET    /api/tickets/reports     → Reports & analytics (admin)');
     console.log('   GET    /api/tickets/:id         → Get ticket');
     console.log('   DELETE /api/tickets/:id         → Delete ticket (admin)');
     console.log('');

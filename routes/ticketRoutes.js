@@ -12,6 +12,7 @@ const {
   getTicketById,
   deleteTicket,
   exportTickets,
+  getReportStats,
 } = require('../controllers/ticketController');
 
 // ── Staff + Admin routes ──────────────────────
@@ -21,6 +22,7 @@ router.post('/', verifyToken, isStaff, createTicket);
 router.get('/', verifyToken, isAdmin, getAllTickets);
 router.get('/today', verifyToken, isAdmin, getTodayStats);
 router.get('/export', verifyToken, isAdmin, exportTickets);
+router.get('/reports', verifyToken, isAdmin, getReportStats);
 router.get('/:id', verifyToken, isStaff, getTicketById);
 router.delete('/:id', verifyToken, isAdmin, deleteTicket);
 

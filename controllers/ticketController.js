@@ -58,7 +58,7 @@ const createTicket = async (req, res, next) => {
 // Protected (Admin) — Get all tickets with optional filters
 const getAllTickets = async (req, res, next) => {
   try {
-    const { search, date, from, to, page = 1, limit = 50, sort = '-createdAt' } = req.query;
+    const { search, date, from, to, fromDate, toDate, page = 1, limit = 50, sort = '-createdAt' } = req.query;
 
     // Build filter object
     const filter = {};
@@ -82,6 +82,13 @@ const getAllTickets = async (req, res, next) => {
     // Filter by route
     if (from) filter.from = { $regex: from, $options: 'i' };
     if (to)   filter.to   = { $regex: to, $options: 'i' };
+
+    // Filter by createdAt date range
+    if (fromDate || toDate) {
+      filter.createdAt = {};
+      if (fromDate) filter.createdAt.$gte = new Date(fromDate + 'T00:00:00.000Z');
+      if (toDate)   filter.createdAt.$lte = new Date(toDate + 'T23:59:59.999Z');
+    }
 
     // Pagination
     const skip  = (Number(page) - 1) * Number(limit);
@@ -108,7 +115,7 @@ const getAllTickets = async (req, res, next) => {
 };
 
 // ── GET /api/tickets/today ────────────────────
-// Protected (Admin) — Get today's stats
+// Protected (Admin) — Get today's stats (single aggregation)
 const getTodayStats = async (req, res, next) => {
   try {
     const todayStart = new Date();
@@ -117,22 +124,27 @@ const getTodayStats = async (req, res, next) => {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    const todayFilter = { createdAt: { $gte: todayStart, $lte: todayEnd } };
-
-    const totalCustomers = await Ticket.countDocuments();
-    const todayTickets   = await Ticket.countDocuments(todayFilter);
-    const todayRevenue   = await Ticket.aggregate([
-      { $match: todayFilter },
-      { $group: { _id: null, total: { $sum: '$price' } } },
+    const result = await Ticket.aggregate([
+      { $match: { createdAt: { $gte: todayStart, $lte: todayEnd } } },
+      { $group: {
+          _id: null,
+          todayTickets: { $sum: 1 },
+          todayRevenue: { $sum: '$price' },
+          uniquePhones: { $addToSet: '$phone' },
+      }},
+      { $project: {
+          _id: 0,
+          todayTickets: 1,
+          todayRevenue: 1,
+          totalCustomers: { $size: '$uniquePhones' },
+      }},
     ]);
+
+    const stats = result.length > 0 ? result[0] : { totalCustomers: 0, todayTickets: 0, todayRevenue: 0 };
 
     res.status(200).json({
       success: true,
-      data: {
-        totalCustomers,
-        todayTickets,
-        todayRevenue: todayRevenue.length > 0 ? todayRevenue[0].total : 0,
-      },
+      data: stats,
     });
   } catch (error) {
     next(error);
@@ -195,11 +207,29 @@ const deleteTicket = async (req, res, next) => {
   }
 };
 
-// ── GET /api/export ───────────────────────────
-// Protected (Admin) — Export all tickets as CSV
+// ── GET /api/tickets/export ───────────────────
+// Protected (Admin) — Export tickets as CSV (respects filters)
 const exportTickets = async (req, res, next) => {
   try {
-    const tickets = await Ticket.find()
+    const { fromDate, toDate, search } = req.query;
+    const filter = {};
+
+    // Apply date range filter on createdAt
+    if (fromDate || toDate) {
+      filter.createdAt = {};
+      if (fromDate) filter.createdAt.$gte = new Date(fromDate + 'T00:00:00.000Z');
+      if (toDate)   filter.createdAt.$lte = new Date(toDate + 'T23:59:59.999Z');
+    }
+
+    // Apply search filter
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search } },
+      ];
+    }
+
+    const tickets = await Ticket.find(filter)
       .populate('createdBy', 'name')
       .sort({ createdAt: -1 });
 
@@ -212,8 +242,7 @@ const exportTickets = async (req, res, next) => {
 
     // Transform data for CSV
     const csvData = tickets.map((t) => ({
-      'Ticket ID': t.ticketId,
-      'Customer Name': t.name,
+      'Name': t.name,
       'Phone': t.phone,
       'From': t.from,
       'To': t.to,
@@ -222,9 +251,12 @@ const exportTickets = async (req, res, next) => {
         month: 'short',
         year: 'numeric',
       }),
-      'Price (₹)': t.price,
-      'Booked By': t.createdBy ? t.createdBy.name : 'Unknown',
-      'Booking Date': new Date(t.createdAt).toLocaleString('en-IN'),
+      'Ticket Price (₹)': t.price,
+      'Created At': new Date(t.createdAt).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
     }));
 
     // Convert to CSV using json2csv
@@ -248,6 +280,66 @@ const exportTickets = async (req, res, next) => {
   }
 };
 
+// ── GET /api/tickets/reports ──────────────────
+// Protected (Admin) — Reports summary + paginated data
+const getReportStats = async (req, res, next) => {
+  try {
+    const { fromDate, toDate, page = 1, limit = 50 } = req.query;
+    const filter = {};
+
+    // Apply date range filter on createdAt
+    if (fromDate || toDate) {
+      filter.createdAt = {};
+      if (fromDate) filter.createdAt.$gte = new Date(fromDate + 'T00:00:00.000Z');
+      if (toDate)   filter.createdAt.$lte = new Date(toDate + 'T23:59:59.999Z');
+    }
+
+    // Summary via aggregation (single pipeline)
+    const summaryPipeline = [
+      ...(Object.keys(filter).length ? [{ $match: filter }] : []),
+      { $group: {
+          _id: null,
+          totalTickets: { $sum: 1 },
+          totalRevenue: { $sum: '$price' },
+          uniquePhones: { $addToSet: '$phone' },
+      }},
+      { $project: {
+          _id: 0,
+          totalTickets: 1,
+          totalRevenue: 1,
+          totalCustomers: { $size: '$uniquePhones' },
+      }},
+    ];
+
+    const summaryResult = await Ticket.aggregate(summaryPipeline);
+    const summary = summaryResult.length > 0
+      ? summaryResult[0]
+      : { totalCustomers: 0, totalTickets: 0, totalRevenue: 0 };
+
+    // Paginated data
+    const skip  = (Number(page) - 1) * Number(limit);
+    const total = await Ticket.countDocuments(filter);
+    const tickets = await Ticket.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .select('name phone from to travelDate price createdAt');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        summary,
+        tickets,
+        total,
+        page: Number(page),
+        pages: Math.ceil(total / Number(limit)),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createTicket,
   getAllTickets,
@@ -255,4 +347,5 @@ module.exports = {
   getTicketById,
   deleteTicket,
   exportTickets,
+  getReportStats,
 };
